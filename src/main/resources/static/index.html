@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Simple Chat</title>
+    <style>
+        body { font-family: sans-serif; max-width: 500px; margin: 40px auto; }
+        #messages { border: 1px solid #ccc; height: 300px; overflow-y: auto; padding: 10px; margin-bottom: 10px; }
+        input { padding: 8px; }
+        #name { width: 100px; }
+        #text { width: 250px; }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+</head>
+<body>
+<h2>Simple Chat</h2>
+<div id="messages"></div>
+<input id="name" placeholder="Name">
+<input id="text" placeholder="Message">
+<button onclick="send()">Send</button>
+
+<script>
+    // Connect to Spring via SockJS, then wrap in Stomp
+    var socket = new SockJS('/ws');
+    var stomp = Stomp.over(socket);
+
+    stomp.connect({}, function () {
+        // Listen for broadcast messages
+        stomp.subscribe('/topic/messages', function (msg) {
+            var m = JSON.parse(msg.body);
+            var div = document.getElementById('messages');
+            div.innerHTML += '<p><b>' + m.from + ':</b> ' + m.text + '</p>';
+            div.scrollTop = div.scrollHeight;
+        });
+    });
+
+    function send() {
+        var name = document.getElementById('name').value;
+        var text = document.getElementById('text').value;
+        stomp.send('/app/chat', {}, JSON.stringify({from: name, text: text}));
+        document.getElementById('text').value = '';
+    }
+</script>
+</body>
+</html>

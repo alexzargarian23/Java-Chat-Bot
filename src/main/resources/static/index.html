@@ -9,6 +9,7 @@
         input { padding: 8px; }
         #name { width: 100px; }
         #text { width: 250px; }
+        .chat-image { display: block; max-width: 250px; max-height: 250px; margin-top: 5px; }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
@@ -18,6 +19,7 @@
 <div id="messages"></div>
 <input id="name" placeholder="Name">
 <input id="text" placeholder="Message">
+<input id="image" type="file" accept="image/*">
 <button onclick="send()">Send</button>
 
 <script>
@@ -30,7 +32,32 @@
         stomp.subscribe('/topic/messages', function (msg) {
             var m = JSON.parse(msg.body);
             var div = document.getElementById('messages');
-            div.innerHTML += '<p><b>' + m.from + ':</b> ' + m.text + '</p>';
+            var message = document.createElement('p');
+            var sender = document.createElement('b');
+            sender.textContent = m.from + ': ';
+            message.appendChild(sender);
+
+            if (m.text) {
+                message.appendChild(document.createTextNode(m.text));
+            }
+
+            if (m.image) {
+                var image = document.createElement('img');
+                image.alt = 'Shared image';
+                image.className = 'chat-image';
+                image.onload = function () {
+                    div.scrollTop = div.scrollHeight;
+                };
+                image.onerror = function () {
+                    var error = document.createElement('span');
+                    error.textContent = 'Image could not be displayed';
+                    message.replaceChild(error, image);
+                };
+                image.src = m.image;
+                message.appendChild(image);
+            }
+
+            div.appendChild(message);
             div.scrollTop = div.scrollHeight;
         });
     });
@@ -38,8 +65,55 @@
     function send() {
         var name = document.getElementById('name').value;
         var text = document.getElementById('text').value;
-        stomp.send('/app/chat', {}, JSON.stringify({from: name, text: text}));
+        var imageFile = document.getElementById('image').files[0];
+
+        if (!name.trim() || (!text.trim() && !imageFile)) {
+            return;
+        }
+
+        if (imageFile) {
+            if (imageFile.size > 5 * 1024 * 1024) {
+                alert('Please choose an image smaller than 5 MB.');
+                return;
+            }
+
+            var reader = new FileReader();
+            reader.onload = function () {
+                compressImage(reader.result, function (compressedImage) {
+                    sendMessage(name, text, compressedImage);
+                });
+            };
+            reader.readAsDataURL(imageFile);
+        } else {
+            sendMessage(name, text, null);
+        }
+    }
+
+    function compressImage(dataUrl, callback) {
+        var source = new Image();
+        source.onload = function () {
+            var maxSize = 1280;
+            var scale = Math.min(1, maxSize / Math.max(source.width, source.height));
+            var canvas = document.createElement('canvas');
+            canvas.width = Math.round(source.width * scale);
+            canvas.height = Math.round(source.height * scale);
+            canvas.getContext('2d').drawImage(source, 0, 0, canvas.width, canvas.height);
+            callback(canvas.toDataURL('image/jpeg', 0.8));
+        };
+        source.onerror = function () {
+            alert('The selected file is not a readable image.');
+        };
+        source.src = dataUrl;
+    }
+
+    function sendMessage(name, text, image) {
+        stomp.send('/app/chat', {}, JSON.stringify({
+            from: name,
+            text: text,
+            image: image
+        }));
         document.getElementById('text').value = '';
+        document.getElementById('image').value = '';
     }
 </script>
 </body>
